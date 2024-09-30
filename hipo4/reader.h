@@ -33,28 +33,28 @@
  * FILE HEADER STRUCTURE ( 56 bytes, 14 integers (32 bit) )
  *
  *    +----------------------------------+
- *  1 |              ID                  | // HIPO: 0x43455248, Evio: 0x4556494F
+ *  1 |              ID                  | HIPO: 0x43455248, Evio: 0x4556494F
  *    +----------------------------------+
- *  2 +          File Number             | // split file #
+ *  2 +          File Number             | split file #
  *    +----------------------------------+
- *  3 +         Header Length            | // 14 (words)
+ *  3 +         Header Length            | 14 (words)
  *    +----------------------------------+
  *  4 +      Record (Index) Count        |
  *    +----------------------------------+
- *  5 +      Index Array Length          | // bytes
+ *  5 +      Index Array Length          | bytes
  *    +-----------------------+----------+
- *  6 +       Bit Info        | Version  | // version (8 bits)
+ *  6 +       Bit Info        | Version  | version (8 bits)
  *    +-----------------------+----------+
- *  7 +      User Header Length          | // bytes
+ *  7 +      User Header Length          | bytes
  *    +----------------------------------+
- *  8 +          Magic Number            | // 0xc0da0100
+ *  8 +          Magic Number            | 0xc0da0100
  *    +----------------------------------+
  *  9 +          User Register           |
  *    +--                              --+
  * 10 +                                  |
  *    +----------------------------------+
- * 11 +         Trailer Position         | // File offset to trailer head (64 bits).
- *    +--                              --+ // 0 = no offset available or no trailer exists.
+ * 11 +         Trailer Position         | File offset to trailer head (64 bits).
+ *    +--                              --+ 0 = no offset available or no trailer exists.
  * 12 +                                  |
  *    +----------------------------------+
  * 13 +          User Integer 1          |
@@ -94,60 +94,57 @@
 #ifndef HIPOREADER_H
 #define HIPOREADER_H
 
-
-#define HIPO_FILE_HEADER_SIZE 72
-/* Constants for endianness of the file */
-#ifndef BIG_ENDIAN
-#define BIG_ENDIAN     0
-#endif
-#ifndef LITTLE_ENDIAN
-#define LITTLE_ENDIAN  1
-#endif
-
-#include <iostream>
-#include <utility>
-#include <vector>
-#include <fstream>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
 #include <memory>
-#include <thread>
-#include <climits>
 #include <mutex>
+#include <thread>
+#include <utility>
+#include <vector>
+#include "bank.h"
 #include "record.h"
 #include "utils.h"
-#include "bank.h"
+
+constexpr int HIPO_FILE_HEADER_SIZE = 72;
+/* Constants for endianness of the file */
+#ifndef BIG_ENDIAN
+#define BIG_ENDIAN 0
+#endif
+#ifndef LITTLE_ENDIAN
+#define LITTLE_ENDIAN 1
+#endif
 
 namespace hipo {
 
-   //  typedef struct fileHeader_t {
-   struct fileHeader_t {
-      int  uniqueid{};
-      int  filenumber{};
-      int  headerLength{}; // in words (usually 14)
-      int  recordCount{};
-      int  indexArrayLength{}; // in bytes
-      int  bitInfo{};
-      int  version{};
-      int  userHeaderLength{};
-      int  magicNumber{};
-      long userRegister{};
-      long trailerPosition{};
-      long firstRecordPosition{};
-   };// fileHeader_t;
+struct fileHeader_t {
+    int uniqueid{};
+    int filenumber{};
+    int headerLength{};  // in words (usually 14)
+    int recordCount{};
+    int indexArrayLength{};  // in bytes
+    int bitInfo{};
+    int version{};
+    int userHeaderLength{};
+    int magicNumber{};
 
+    long userRegister{};
+    long trailerPosition{};
+    long firstRecordPosition{};
+};
 
-   //  typedef struct recordInfo_t {
-   struct recordInfo_t {
-      long recordPosition{};
-      int  recordLength{};
-      int  recordEntries{};
-      long userWordOne{};
-      long userWordTwo{};
-   };// recordInfo_t;
+struct recordInfo_t {
+    int recordLength{};
+    int recordEntries{};
 
+    long recordPosition{};
+    long userWordOne{};
+    long userWordTwo{};
+};
 
-   /**
+/**
    * READER index class is used to construct entire events
    * sequence from all records, and provides ability to canAdvance
    * through events where record number is automatically calculated
@@ -155,188 +152,248 @@ namespace hipo {
    * record are exhausted.
    */
 
-   class readerIndex {
+class readerIndex {
 
    private:
+    std::vector<int> recordEvents;
+    std::vector<long> recordPosition;
 
-     std::vector<int>  recordEvents;
-      std::vector<long> recordPosition;
-
-      int              currentRecord{};
-      int              currentEvent{};
-      int              currentRecordEvent{};
+    int currentRecord{};
+    int currentEvent{};
+    int currentRecordEvent{};
 
    public:
+    readerIndex() = default;
+    ~readerIndex() = default;
 
-      readerIndex()= default;;
-      ~readerIndex()= default;;
+    bool canAdvance();
+    bool advance();
 
-      bool canAdvance();
-      bool advance();
+    //dglazier
+    bool canAdvanceInRecord();
+    bool loadRecord(int irec);
+    bool gotoEvent(int eventNumber);
+    bool gotoRecord(int irec);
 
-      //dglazier
-      bool canAdvanceInRecord();
-      bool loadRecord(int irec);
-      bool  gotoEvent(int eventNumber);
-      bool  gotoRecord(int irec);
+    int getEventNumber() const { return currentEvent; }
 
-      int  getEventNumber() { return currentEvent;}
-      int  getRecordNumber() { return currentRecord;}
-      int  getRecordEventNumber() { return currentRecordEvent;}
-      int  getMaxEvents();
-      void addSize(int size);
-      void addPosition(long position){ recordPosition.push_back(position);}
-      long getPosition(int index) { return recordPosition[index];}
+    int getRecordNumber() const { return currentRecord; }
 
-      //dglazier
-      int getNRecords() const {return recordEvents.size();}
-      void show();
-      void rewind(){
-         currentRecord = -1; currentEvent  = -1; currentRecordEvent = -1;
-      }
-      void clear(){
-         recordEvents.clear(); recordPosition.clear();
-      }
-      void reset(){
-         currentRecord = 0; currentEvent  = 0; currentRecordEvent = 0;
-      }
-   };
+    int getRecordEventNumber() const { return currentRecordEvent; }
 
-   class reader {
+    int getMaxEvents();
+    void addSize(int size);
+
+    void addPosition(long position) { recordPosition.push_back(position); }
+
+    long getPosition(int index) { return recordPosition[index]; }
+
+    //dglazier
+    std::size_t getNRecords() const { return recordEvents.size(); }
+
+    void show();
+
+    void rewind() {
+        currentRecord = -1;
+        currentEvent = -1;
+        currentRecordEvent = -1;
+    }
+
+    void clear() {
+        recordEvents.clear();
+        recordPosition.clear();
+    }
+
+    void reset() {
+        currentRecord = 0;
+        currentEvent = 0;
+        currentRecordEvent = 0;
+    }
+};
+
+class reader {
 
    private:
+    fileHeader_t header{};
+    hipo::utils hipoutils;
+    std::ifstream inputStream;
+    long inputStreamSize{};
 
-      fileHeader_t      header{};
-      hipo::utils       hipoutils;
-      std::ifstream     inputStream;
-      long              inputStreamSize{};
+    hipo::record inputRecord;
+    hipo::readerIndex readerEventIndex;
+    std::vector<long> tagsToRead;
 
-      hipo::record       inputRecord;
-      hipo::readerIndex  readerEventIndex;
-      std::vector<long>  tagsToRead;
+    short _verbose = {0};
 
-     short _verbose = {0} ;
+    std::map<std::string, std::string> userConfig;
 
-      std::map<std::string,std::string>  userConfig;
+    hipo::event event;
+    hipo::dictionary factory;
 
+    void readHeader();
+    void readIndex();
 
-      hipo::event event;
-      hipo::dictionary  factory;
-
-      void  readHeader();
-      void  readIndex();
-
-      
    public:
+    reader();
 
-      reader();
-      reader(const char *file){ open(file);}
-      
-      reader(const char *file, std::vector<int> tags){
-	//for(int t = 0; t < tags.size(); t++) setTags(tags[t]);
-	for(auto tag : tags) setTags(tag);
-         open(file);
-      }
+    explicit reader(const char* file) { open(file); }
 
-      reader(const reader &r){}
+    explicit reader(const std::string_view file, hipo::dictionary& dict, const short verbose = 0);
 
-      ~reader();
+    reader(const char* file, const std::vector<int>& tags) {
+        for (int tag : tags)
+            setTags(tag);
+        open(file);
+    }
 
-      void  about();
-      void  rewind(){ readerEventIndex.rewind();}
-      void  readDictionary(hipo::dictionary &dict);
-      void  getStructure(hipo::structure &structure,int group, int item);
-      void  getStructureNoCopy(hipo::structure &structure,int group, int item);
+    reader(const reader& r) = delete;
 
-      void readUserConfig(std::map<std::string,std::string> &mapConfig);
-      //std::string getUserConfig(const char *key);
+    ~reader();
 
-      void  open(const char *filename);
-      bool  is_open(){ return inputStream.is_open();}
-      void  setTags(int tag){ tagsToRead.push_back(tag);}
-      void  setTags(std::vector<long> tags){ tagsToRead=std::move(tags);}
-      void  setVerbose(short level=1){_verbose=level;}
+    void about() const;
 
-      bool  hasNext();
-      bool  next();
-      bool  gotoEvent(int eventNumber);
-      bool  gotoRecord(int irec);
-      bool  next(hipo::event &dataevent);
-      
-      bool  next(std::vector<hipo::bank> &list);
-      std::vector<hipo::bank> getBanks(std::vector<std::string> names);
+    void rewind() { readerEventIndex.rewind(); }
 
-      void  read(hipo::event &dataevent);
-      void  printWarning();
-      //void  showUserConfig();
-      int getNRecords() const {return readerEventIndex.getNRecords()-1;}
-      bool  nextInRecord();
-      bool loadRecord(int irec);
-      bool loadRecord(hipo::record &record, int irec);
-      int  getEntries(){return readerEventIndex.getMaxEvents();}
-      std::vector<int>   getInt(  const char *bank, const char *column, int max = -1);
-      std::vector<float> getFloat(const char *bank, const char *column, int max = -1);
-   };
+    void readDictionary(hipo::dictionary& dict);
+    void getStructure(hipo::structure& structure, int group, int item);
+    void getStructureNoCopy(hipo::structure& structure, int group, int item);
+
+    void readUserConfig(std::map<std::string, std::string>& mapConfig);
+
+    void open(const char* filename);
+
+    bool is_open() { return inputStream.is_open(); }
+
+    void setTags(int tag) { tagsToRead.push_back(tag); }
+
+    void setTags(std::vector<long> tags) { tagsToRead = std::move(tags); }
+
+    void setVerbose(short level = 1) { _verbose = level; }
+
+    bool hasNext();
+    bool next();
+    bool gotoEvent(int eventNumber);
+    bool gotoRecord(int irec);
+    bool next(hipo::event& dataevent);
+
+    bool next(std::vector<hipo::bank>& list);
+    std::vector<hipo::bank> getBanks(const std::vector<std::string>& names);
+
+    void read(hipo::event& dataevent);
+    void printWarning() const;
+
+    std::size_t getNRecords() const { return readerEventIndex.getNRecords() - 1; }
+
+    bool nextInRecord();
+    bool loadRecord(int irec);
+    bool loadRecord(hipo::record& record, int irec);
+
+    int getEntries() { return readerEventIndex.getMaxEvents(); }
+
+    std::vector<int> getInt(const char* bank, const char* column, int max = -1);
+    std::vector<float> getFloat(const char* bank, const char* column, int max = -1);
+
+    template <typename... Args>
+    auto for_each_arg(hipo::event& dataevent, Args&... args) -> void {
+        (dataevent.getStructure(args), ...);
+    }
+
+    /**
+     * Advances the event index and reads the next event from the input record.
+     *
+     * @param dataevent the event to be read
+     * @param args      banks to be fill
+     *
+     * @return true if the event was read successfully, false otherwise
+     */
+    template <typename... Args>
+    auto next(hipo::event& dataevent, Args&... args) -> bool {
+        if (readerEventIndex.canAdvance() == false)
+            return false;
+        int recordNumber = readerEventIndex.getRecordNumber();
+        readerEventIndex.advance();
+
+        if (int recordToBeRead = readerEventIndex.getRecordNumber(); recordToBeRead != recordNumber) {
+            long position = readerEventIndex.getPosition(recordToBeRead);
+            inputRecord.readRecord(inputStream, position, 0);
+        }
+
+        int eventNumberInRecord = readerEventIndex.getRecordEventNumber();
+        inputRecord.readHipoEvent(dataevent, eventNumberInRecord);
+
+        for_each_arg(dataevent, args...);
+
+        return true;
+    }
+};
 
 class readerstream {
-    private:
-      hipo::reader hr;
-      //hipo::writer hw;
-      hipo::dictionary  factory;
-      std::mutex obj;
-      long  nProcessed =  0;     
-      long  nDataLimit = -1;
+   private:
+    hipo::reader hr;
+    hipo::dictionary factory;
+    std::mutex obj;
+    long nProcessed = 0;
+    long nDataLimit = -1;
+
    public:
+    readerstream() = default;
 
-  //static int eof_printout;
+    virtual ~readerstream() = default;
 
-  readerstream(){ /*datastream::eof_printout = 0;*/}
+    void open(const char* input) {
+        hr.open(input);
+        hr.readDictionary(factory);
+    }
 
-  virtual ~readerstream(){}
-  void open(const char *input){
-           hr.open(input);
-           hr.readDictionary(factory);
-           //hw.addDictionary(factory);
-           //hw.open(output);
-   }
+    void setLimit(long limit) {
+        nDataLimit = limit;
+    }
 
-   void setLimit(long limit){
-      nDataLimit = limit;
-   }
-   
-   void run(std::function<int(int)> &&function, int nthreads){
-      std::vector<std::thread*> threads;
-      for(int i = 0; i < nthreads; i++){
-              threads.push_back(new std::thread(function,i));
-      }
-      printf("-- created denoiser with %lu threads\n", threads.size());
-      for(int k = 0; k < (int) threads.size(); k++) threads[k]->join();
-      for(int k = 0; k < (int) threads.size(); k++) delete threads[k];
-   }
-   
-   hipo::reader &reader(){return hr;}
-   hipo::dictionary &dictionary(){ return factory;}
-   void pull(std::vector<hipo::event> &events){
-        
+    void run(std::function<int(int)>&& function, int nthreads) {
+        std::vector<std::thread> threads;
+        for (int i = 0; i < nthreads; i++) {
+            threads.push_back(std::thread(function, i));
+        }
+        printf("-- created denoiser with %lu threads\n", threads.size());
+        for (std::thread& thread : threads)
+            thread.join();
+    }
+
+    hipo::reader& reader() { return hr; }
+
+    hipo::dictionary& dictionary() { return factory; }
+
+    void pull(std::vector<hipo::event>& events) {
+
         std::unique_lock<std::mutex> lock(obj);
         bool finished = false;
-        if(nDataLimit>0){ if(nProcessed>nDataLimit) finished = true;}
+        if (nDataLimit > 0) {
+            if (nProcessed > nDataLimit)
+                finished = true;
+        }
 
-        if(hr.hasNext()==false){ printf("\n");}
+        if (hr.hasNext() == false) {
+            printf("\n");
+        }
 
-        for(int n = 0; n < (int) events.size(); n++){
+        for (int n = 0; n < (int)events.size(); n++) {
             // write the event in the output if it's not empty
             //if(events[n].getSize()>16){ hw.addEvent(events[n]);}
             // reset event and read next in the file if any left
             events[n].reset();
-            if(hr.next()==true&&finished==false){
-                hr.read(events[n]); nProcessed++;
-                if(nProcessed%250==0) { printf("."); fflush(stdout);}
-                if(nProcessed%10000==0) printf(" : %9lu \n",nProcessed);
+            if (hr.next() == true && finished == false) {
+                hr.read(events[n]);
+                nProcessed++;
+                if (nProcessed % 250 == 0) {
+                    printf(".");
+                    fflush(stdout);
+                }
+                if (nProcessed % 10000 == 0)
+                    printf(" : %9lu \n", nProcessed);
             }
         }
     }
-   };
+};
 
-}
+}  // namespace hipo
 #endif /* HIPOREADER_H */
